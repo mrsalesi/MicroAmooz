@@ -1,4 +1,8 @@
+import 'screens/Page02.dart';
 import 'package:flutter/material.dart';
+import 'screens/Page01.dart';
+import 'screens/Page03.dart';
+import 'screens/Page09.dart';
 
 void main() => runApp(const MyApp());
 
@@ -8,13 +12,15 @@ class MyApp extends StatelessWidget {
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: _title,
-      theme: ThemeData(
-        // useMaterial3: false,
-        primarySwatch: Colors.blue,
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: MaterialApp(
+        title: _title,
+        theme: ThemeData(
+          primarySwatch: Colors.blue,
+        ),
+        home: const Page01(),
       ),
-      home: const MyHomePage(),
     );
   }
 }
@@ -55,7 +61,7 @@ class _MyHomePageState extends State<MyHomePage> {
       appBar: AppBar(
         // Here we take the value from the MyHomePage object that was created by
         // the App.build method, and use it to set our appbar title.
-        title: const Text('Flutter Demo Click Counter'),
+        title: const Text('TEDMA'),
       ),
       body: Center(
         // Center is a layout widget. It takes a single child and positions it
