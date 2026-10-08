@@ -1,13 +1,76 @@
 import 'package:flutter/material.dart';
-
 import 'package:page_transition/page_transition.dart';
 
 import 'Page03.dart';
 import 'Page04.dart';
 import 'Page05.dart';
+import '../data/Auth.dart';
+import '../utility/Tools.dart';
 
-class Page02 extends StatelessWidget {
+// ... بدنه‌ی کلاس بدون تغییر، فقط این خط عوض می‌شود:
+// final result = await Tools.login(...)  →
+// final result = await Auth.login(...)
+
+class Page02 extends StatefulWidget {
   const Page02({Key? key}) : super(key: key);
+
+  @override
+  State<Page02> createState() => _Page02State();
+}
+
+class _Page02State extends State<Page02> {
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onLoginPressed() async {
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (username.isEmpty) {
+      Tools.toast(ToastType.warning, "لطفاً نام کاربری را وارد کنید");
+      return;
+    }
+    if (password.isEmpty) {
+      Tools.toast(ToastType.warning, "لطفاً رمز عبور را وارد کنید");
+      return;
+    }
+    if (password.length < 4) {
+      Tools.toast(ToastType.warning, "رمز عبور باید حداقل ۴ کاراکتر باشد");
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    // تغییر کلیدی: فراخوانی از طریق Auth به‌جای Tools
+    final result = await Auth.login(username: username, password: password);
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (result["success"] == true) {
+      Tools.toast(ToastType.info, "ورود با موفقیت انجام شد");
+      Navigator.push(
+        context,
+        PageTransition(
+          type: PageTransitionType.leftToRight,
+          child: const Page03(),
+        ),
+      );
+    } else {
+      Tools.toast(
+        ToastType.danger,
+        result["message"] ?? "نام کاربری یا رمز عبور اشتباه است",
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,9 +84,7 @@ class Page02 extends StatelessWidget {
               Padding(
                 padding: EdgeInsets.all(15.0),
                 child: Image(
-                  image: AssetImage(
-                    'images/Logo.png',
-                  ),
+                  image: AssetImage('images/Logo.png'),
                   height: 35,
                 ),
               ),
@@ -31,7 +92,7 @@ class Page02 extends StatelessWidget {
           )),
       body: SingleChildScrollView(
         child: Container(
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             gradient: LinearGradient(
               colors: [Color(0xffb2b2b2), Color(0xff1291a7)],
               stops: [0.5, 0.5],
@@ -40,14 +101,10 @@ class Page02 extends StatelessWidget {
             ),
           ),
           child: Column(children: [
-            const SizedBox(
-              height: 40,
-            ),
+            const SizedBox(height: 40),
             Padding(
               padding: const EdgeInsets.only(left: 40, right: 40),
-              child: Image.asset(
-                "images/02_small.png",
-              ),
+              child: Image.asset("images/02_small.png"),
             ),
             Container(
                 width: 400,
@@ -71,17 +128,14 @@ class Page02 extends StatelessWidget {
                                 height: 30,
                                 margin: const EdgeInsets.all(3),
                                 child: TextFormField(
+                                  controller: _usernameController,
                                   decoration: const InputDecoration(
                                     border: InputBorder.none,
                                     hintText: '',
                                     contentPadding: EdgeInsets.only(left: 10),
                                   ),
                                   textDirection: TextDirection.ltr,
-                                  initialValue: "",
                                   textAlignVertical: TextAlignVertical.top,
-                                  validator: (value) {
-                                    return '';
-                                  },
                                 )),
                           ),
                           const Expanded(
@@ -109,17 +163,15 @@ class Page02 extends StatelessWidget {
                             Expanded(
                               flex: 5,
                               child: TextFormField(
+                                controller: _passwordController,
+                                obscureText: true,
                                 decoration: const InputDecoration(
                                   border: InputBorder.none,
                                   hintText: '',
                                   contentPadding: EdgeInsets.only(left: 10),
                                 ),
                                 textDirection: TextDirection.ltr,
-                                initialValue: "",
                                 textAlignVertical: TextAlignVertical.top,
-                                validator: (value) {
-                                  return '';
-                                },
                               ),
                             ),
                             const Expanded(
@@ -141,17 +193,9 @@ class Page02 extends StatelessWidget {
                         thickness: 1,
                       ),
                       InkWell(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            PageTransition(
-                              type: PageTransitionType.leftToRight,
-                              child: const Page03(),
-                            ),
-                          );
-                        },
+                        onTap: _isLoading ? null : _onLoginPressed,
                         child: Container(
-                          margin: EdgeInsets.all(10),
+                          margin: const EdgeInsets.all(10),
                           alignment: Alignment.center,
                           width: 120,
                           padding: const EdgeInsets.all(5),
@@ -159,13 +203,22 @@ class Page02 extends StatelessWidget {
                             borderRadius: BorderRadius.all(Radius.circular(35)),
                             color: Colors.black45,
                           ),
-                          child: const Text(
-                            "وارد شوید",
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.white,
-                            ),
-                          ),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  "وارد شوید",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.white,
+                                  ),
+                                ),
                         ),
                       ),
                       InkWell(
@@ -179,7 +232,7 @@ class Page02 extends StatelessWidget {
                           );
                         },
                         child: Container(
-                          margin: EdgeInsets.all(10),
+                          margin: const EdgeInsets.all(10),
                           alignment: Alignment.center,
                           width: 120,
                           padding: const EdgeInsets.all(5),
@@ -207,7 +260,7 @@ class Page02 extends StatelessWidget {
                           );
                         },
                         child: Container(
-                          margin: EdgeInsets.all(10),
+                          margin: const EdgeInsets.all(10),
                           alignment: Alignment.center,
                           width: 120,
                           padding: const EdgeInsets.all(5),
