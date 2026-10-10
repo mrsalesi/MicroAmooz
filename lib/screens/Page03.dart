@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:page_transition/page_transition.dart';
 
+import '../data/Auth.dart';
+import '../utility/Tools.dart';
 import 'Page06.dart';
 
 class Page03 extends StatefulWidget {
-  const Page03({Key? key}) : super(key: key);
+  final String mobile;
+
+  const Page03({Key? key, this.mobile = ''}) : super(key: key);
 
   @override
   State<Page03> createState() => _Page03State();
@@ -15,6 +19,41 @@ class _Page03State extends State<Page03> {
   late FocusNode _focusNode;
   String _value = "";
   final int _otpLength = 4; // به‌جای widget.length
+  bool _isLoading = false;
+
+  Future<void> _onConfirmPressed() async {
+    if (_isLoading) return;
+    if (widget.mobile.isEmpty) {
+      Tools.toast(ToastType.warning, "شماره موبایل برای تایید کد مشخص نیست");
+      return;
+    }
+    if (_value.length != _otpLength) {
+      Tools.toast(ToastType.warning, "کد چهار رقمی پیامک را وارد کنید");
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    final result = await Auth.verifySms(mobile: widget.mobile, code: _value);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (result["success"] == true) {
+      Tools.toast(ToastType.info, result["message"]?.toString() ?? "ورود با موفقیت انجام شد");
+      Navigator.push(
+        context,
+        PageTransition(
+          type: PageTransitionType.leftToRight,
+          child: const Page06(),
+        ),
+      );
+      return;
+    }
+
+    Tools.toast(
+      ToastType.danger,
+      result["message"]?.toString() ?? "کد تایید هویت صحیح نمی باشد",
+    );
+  }
 
   @override
   void initState() {
@@ -139,10 +178,6 @@ class _Page03State extends State<Page03> {
                                     setState(() {
                                       _value = val;
                                     });
-                                    if (val.length == _otpLength) {
-                                      // اینجا کد تایید رو بفرست یا هر کاری که لازمه
-                                      debugPrint("کد کامل شد: $val");
-                                    }
                                   },
                                 ),
                               ),
@@ -159,15 +194,7 @@ class _Page03State extends State<Page03> {
                         ),
                       ),
                       InkWell(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            PageTransition(
-                              type: PageTransitionType.leftToRight,
-                              child: const Page06(),
-                            ),
-                          );
-                        },
+                        onTap: _isLoading ? null : _onConfirmPressed,
                         child: Container(
                           margin: const EdgeInsets.all(30),
                           alignment: Alignment.center,
@@ -177,13 +204,22 @@ class _Page03State extends State<Page03> {
                             borderRadius: BorderRadius.all(Radius.circular(35)),
                             color: Colors.black45,
                           ),
-                          child: const Text(
-                            "وارد شوید",
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.white,
-                            ),
-                          ),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  "وارد شوید",
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.white,
+                                  ),
+                                ),
                         ),
                       ),
                     ],

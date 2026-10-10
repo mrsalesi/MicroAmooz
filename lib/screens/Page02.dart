@@ -30,6 +30,17 @@ class _Page02State extends State<Page02> {
     super.dispose();
   }
 
+  /// موبایل ذخیره‌شده در پاسخ لاگین را برمی‌گرداند تا تایید پیامک با همان شماره انجام شود.
+  String _mobileFromLogin(Map<String, dynamic> result, String username) {
+    final body = result["data"];
+    if (body is Map) {
+      final inner = body["data"];
+      final mobile = inner is Map ? inner["userMobile"]?.toString() : null;
+      if (mobile != null && mobile.isNotEmpty) return mobile;
+    }
+    return username;
+  }
+
   Future<void> _onLoginPressed() async {
     final username = _usernameController.text.trim();
     final password = _passwordController.text.trim();
@@ -55,21 +66,31 @@ class _Page02State extends State<Page02> {
     if (!mounted) return;
     setState(() => _isLoading = false);
 
+    final serverMessage = result["message"]?.toString() ?? "";
+
+    // فقط result=ok (که Auth آن را success=true می‌کند) به صفحه بعد می‌رود.
+    // خطاهایی مثل invalid_credentials همین‌جا با toast می‌مانند.
     if (result["success"] == true) {
-      Tools.toast(ToastType.info, "ورود با موفقیت انجام شد");
+      Tools.toast(
+        ToastType.info,
+        serverMessage.isNotEmpty ? serverMessage : "ورود با موفقیت انجام شد",
+      );
       Navigator.push(
         context,
         PageTransition(
           type: PageTransitionType.leftToRight,
-          child: const Page03(),
+          child: Page03(mobile: _mobileFromLogin(result, username)),
         ),
       );
-    } else {
-      Tools.toast(
-        ToastType.danger,
-        result["message"] ?? "نام کاربری یا رمز عبور اشتباه است",
-      );
+      return;
     }
+
+    Tools.toast(
+      ToastType.danger,
+      serverMessage.isNotEmpty
+          ? serverMessage
+          : "نام کاربری یا رمز عبور اشتباه است",
+    );
   }
 
   @override

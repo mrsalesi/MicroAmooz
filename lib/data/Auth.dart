@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../utility/Tools.dart';
 
 /// کلاس مدیریت احراز هویت کاربر، منطبق بر پروژه‌ی جاوا وب سمت سرور
@@ -20,6 +22,7 @@ class Auth {
   // کلید ذخیره‌سازی وضعیت لاگین در حافظه‌ی محلی، صرفاً برای راحتی UI
   // (نه برای احراز هویت واقعی - احراز هویت واقعی را کوکی سشن انجام می‌دهد)
   static const String _loggedInFlagKey = "is_logged_in";
+  static const String _tokenKey = "user_token";
 
   /// این متد باید یک‌بار موقع استارت اپ (در main.dart) صدا زده بشود
   /// تا پرچم لاگین قبلی (در صورت وجود) بارگذاری شود.
@@ -52,16 +55,151 @@ class Auth {
       },
     );
 
-    // TODO: به محض اینکه فرمت دقیق JSON پاسخ سرور مشخص شد (مثلاً سرور
-    // یک فیلد مثل {"result":"ok"} یا {"error":"..."} برمی‌گرداند)،
-    // باید اینجا بر اساس محتوای result["data"] (نه فقط کد HTTP)
-    // تشخیص بدهیم لاگین واقعاً موفق بوده یا نه، چون این سرور همیشه
-    // کد ۲۰۰ برمی‌گرداند حتی برای خطاهای منطقی (مثل رمز اشتباه).
-    if (result["success"] == true) {
-      await _setLoggedInFlag(true);
+    // سرور برای خطای منطقی (مثل رمز اشتباه) هم HTTP 200 برمی‌گرداند.
+    // موفقیت واقعی فقط وقتی است که بدنه JSON فیلد result برابر ok باشد.
+    final body = _responseBody(result["data"]);
+    final serverResult = body?["result"]?.toString();
+    final serverMessage = body?["message"]?.toString();
+
+    if (result["success"] == true && serverResult == "ok") {
+      // پرچم لاگین بعد از تایید کد پیامک در verifySms ست می‌شود.
+      return {
+        "success": true,
+        "message": (serverMessage != null && serverMessage.isNotEmpty)
+            ? serverMessage
+            : "کد ورود پیامک شد",
+        "data": body,
+      };
     }
 
-    return result;
+    await _setLoggedInFlag(false);
+    return {
+      "success": false,
+      "message": (serverMessage != null && serverMessage.isNotEmpty)
+          ? serverMessage
+          : (result["message"]?.toString().isNotEmpty == true
+              ? result["message"].toString()
+              : "نام کاربری یا رمز عبور اشتباه است"),
+      "error": body?["error"],
+      "data": body,
+    };
+  }
+
+  /// بدنه پاسخ سرور را به Map تبدیل می‌کند.
+  /// Dio معمولاً JSON را Map می‌کند؛ اگر رشته خام باشد اینجا decode می‌شود.
+  static Map<String, dynamic>? _responseBody(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    if (data is String && data.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(data);
+        if (decoded is Map<String, dynamic>) return decoded;
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  /// تایید کد پیامک؛ معادل سمت سرور: do=Access_User.verifySms
+  ///
+  /// پاسخ موفق JSON است و user_token را برای ذخیره روی دستگاه برمی‌گرداند.
+  static Future<Map<String, dynamic>> verifySms({
+    required String mobile,
+    required String code,
+  }) async {
+    final result = await Tools.send(
+      "Access_User.verifySms",
+      params: {
+        "jj": "0",
+        "user_mobile": mobile,
+        "user_dynamicPass": code,
+      },
+    );
+
+    final body = _responseBody(result["data"]);
+    final serverResult = body?["result"]?.toString();
+    final serverMessage = body?["message"]?.toString();
+    final data = body?["data"];
+    final token = data is Map ? data["user_token"]?.toString() : null;
+
+    if (result["success"] == true && serverResult == "ok" && token != null && token.isNotEmpty) {
+      await Tools.saveValue(_tokenKey, token);
+      await _setLoggedInFlag(true);
+      return {
+        "success": true,
+        "message": (serverMessage != null && serverMessage.isNotEmpty)
+            ? serverMessage
+            : "ورود با موفقیت انجام شد",
+        "data": body,
+      };
+    }
+
+    await _setLoggedInFlag(false);
+    return {
+      "success": false,
+      "message": (serverMessage != null && serverMessage.isNotEmpty)
+          ? serverMessage
+          : "کد تایید هویت صحیح نمی باشد",
+      "error": body?["error"],
+      "data": body,
+    };
+  }
+
+  /// اگر توکن ذخیره‌شده معتبر باشد، بدون صفحه ورود وارد می‌شود.
+  /// معادل سمت سرور: do=Access_User.loginMobile با user_token
+  static Future<Map<String, dynamic>> loginWithSavedToken() async {
+    final token = await Tools.getValue(_tokenKey);
+    if (token == null || token.isEmpty) {
+      return {"success": false};
+    }
+
+    final result = await Tools.send(
+      "Access_User.loginMobile",
+      params: {
+        "jj": "0",
+        "user_email": "",
+        "user_pass": "",
+        "user_token": token,
+      },
+    );
+
+    final text = result["data"]?.toString() ?? "";
+    final invalid = text.contains("نامعتبر") ||
+        text.contains("غیر فعال") ||
+        text.contains("وجود ندارد") ||
+        text.contains("موبایل دیگری");
+    final accepted = result["success"] == true &&
+        text.contains("swLoging") &&
+        !invalid;
+
+    if (accepted) {
+      await _setLoggedInFlag(true);
+      final refreshed = _tokenFromResponse(text);
+      if (refreshed != null && refreshed.isNotEmpty) {
+        await Tools.saveValue(_tokenKey, refreshed);
+      }
+      return {"success": true, "data": result["data"]};
+    }
+
+    if (invalid) {
+      await Tools.removeValue(_tokenKey);
+      await _setLoggedInFlag(false);
+    }
+
+    return {
+      "success": false,
+      "message": invalid ? "نشست ذخیره شده معتبر نیست" : "",
+      "data": result["data"],
+    };
+  }
+
+  /// توکن را از اسکریپت سرور می‌خواند:
+  /// window.localStorage.setItem('user_token', '...')
+  static String? _tokenFromResponse(String text) {
+    final match = RegExp(
+      r"localStorage\.setItem\(\s*'user_token'\s*,\s*'([^']*)'\s*\)",
+    ).firstMatch(text);
+    return match?.group(1);
   }
 
   /// درخواست ثبت‌نام
@@ -99,6 +237,7 @@ class Auth {
   static Future<Map<String, dynamic>> logout() async {
     final result = await Tools.send("Access_User.signOut");
     await _setLoggedInFlag(false);
+    await Tools.removeValue(_tokenKey);
     return result;
   }
 
